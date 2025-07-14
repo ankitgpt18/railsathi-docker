@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: railsathi_postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-rail_sathi_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-rail_sathi_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - railsathi_network
+
+  # FastAPI Application
+  app:
+    build: .
+    container_name: railsathi_app
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-rail_sathi_db}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-password}
+      - GCS_BUCKET_NAME=${GCS_BUCKET_NAME:-sanchalak-media-bucket1}
+      - PROJECT_ID=${PROJECT_ID:-sanchalak-423912}
+      - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-}
+      - MAIL_FROM=${MAIL_FROM:-test@example.com}
+      - MAIL_PASSWORD=${MAIL_PASSWORD:-test123}
+      - MAIL_USERNAME=${MAIL_USERNAME:-test@example.com}
+      - MAIL_PORT=${MAIL_PORT:-587}
+      - MAIL_SERVER=${MAIL_SERVER:-smtp.gmail.com}
+      - DEBUG=${DEBUG:-True}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./RailSathiBE:/app
+      - /tmp/rail_sathi_temp:/tmp/rail_sathi_temp
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - railsathi_network
+    restart: unless-stopped
+    command: >
+      sh -c "
+        echo 'Waiting for database to be ready...' &&
+        sleep 10 &&
+        echo 'Starting FastAPI application...' &&
+        uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+      "
+
+volumes:
+  postgres_data:
+
+networks:
+  railsathi_network:
+    driver: bridge 
